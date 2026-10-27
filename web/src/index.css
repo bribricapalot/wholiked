@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0b0a12;
+  --color-panel: #16141f;
+  --color-panel-2: #1f1c2b;
+  --color-line: #2c2840;
+  --color-muted: #9b96b0;
+  --color-hot: #fe2c55;
+  --color-ice: #25f4ee;
+  --color-sun: #ffd23f;
+  --color-good: #3ddc84;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgb(254 44 85 / 0.16), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgb(37 244 238 / 0.12), transparent 60%),
+    var(--color-ink);
+  background-attachment: fixed;
+  color: #f4f2fa;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.glow-hot {
+  box-shadow:
+    0 0 0 1px rgb(254 44 85 / 0.5),
+    0 10px 40px -10px rgb(254 44 85 / 0.6);
+}
+
+.glow-ice {
+  box-shadow:
+    0 0 0 1px rgb(37 244 238 / 0.5),
+    0 10px 40px -10px rgb(37 244 238 / 0.55);
+}
+
+.text-stroke {
+  text-shadow:
+    3px 3px 0 var(--color-hot),
+    -3px -3px 0 var(--color-ice);
+}
+
+input[type='range'] {
+  accent-color: var(--color-hot);
+}

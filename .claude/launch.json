@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "whogooned-dev",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", ".claude\\dev.cmd"],
+      "port": 5173
+    }
+  ]
+}
