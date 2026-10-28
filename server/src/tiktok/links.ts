@@ -31,8 +31,9 @@ export function parseTikTokUrl(input: string): ParsedLink | null {
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   if (SHARE_HOSTS.has(u.hostname)) {
+    // oEmbed rejects share-domain URLs with a 400, so normalise to tiktok.com.
     const m = u.pathname.match(/^\/share\/video\/(\d{8,25})/);
-    return m ? { videoId: m[1], url: `https://${u.hostname}/share/video/${m[1]}/` } : null;
+    return m ? { videoId: m[1], url: `https://www.tiktok.com/video/${m[1]}` } : null;
   }
   if (!TIKTOK_HOSTS.has(u.hostname)) return null;
   for (const re of ID_PATTERNS) {
