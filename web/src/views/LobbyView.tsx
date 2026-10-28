@@ -215,7 +215,7 @@ function VideoSubmissionPanel() {
   useEffect(refresh, [refresh, me?.videoCount]);
 
   const submit = async () => {
-    const urls = text.split(/[\s,]+/).filter((u) => u.includes('tiktok.com'));
+    const urls = text.split(/[\s,]+/).filter((u) => /tiktokv?\.(com|eu|us)/.test(u)); // tiktokv.* = share links from the data export
     if (!urls.length) return toast('Füge mindestens einen TikTok-Link ein.', 'error');
     setBusy(true);
     try {
