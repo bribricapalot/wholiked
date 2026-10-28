@@ -130,4 +130,4 @@ export async function fetchOEmbed(kv: KV, link: ParsedLink): Promise<OEmbedInfo>
 }
 
 export const embedUrlFor = (videoId: string) =>
-  `https://www.tiktok.com/player/v1/${videoId}?autoplay=1&loop=1&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0`;
+  `https://www.tiktok.com/player/v1/${videoId}?autoplay=1&loop=1&controls=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0`;

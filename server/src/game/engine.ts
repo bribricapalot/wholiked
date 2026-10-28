@@ -23,7 +23,7 @@ import type { Sessions } from '../sessions.js';
 import { keys, type KV } from '../store/index.js';
 import { listVideos, revokeToken } from '../tiktok/api.js';
 import { fetchOEmbed, parseTikTokUrl, resolveLink } from '../tiktok/links.js';
-import { buildDeck, shuffle, toPublicCard, type CandidateVideo, type DeckOwner } from './deck.js';
+import { buildDeck, newCardId, shuffle, toPublicCard, type CandidateVideo, type DeckOwner } from './deck.js';
 import { BOT_PROFILES, DEMO_CARDS, DEMO_TIKTOK_URLS } from './demoPool.js';
 import { computeAwards, emptyStats, rank, scoreRound, type StoredVote } from './scoring.js';
 import { GameError, type PlayerRecord, type RoomRecord } from './types.js';
@@ -93,7 +93,11 @@ export class GameEngine {
   private async save(room: RoomRecord) {
     // Sliding 2h inactivity TTL on everything that belongs to the room.
     await this.kv.set(keys.room(room.code), JSON.stringify(room), ROOM_TTL_SECONDS);
-    await Promise.all([this.kv.expire(keys.subs(room.code), ROOM_TTL_SECONDS), this.kv.expire(keys.deck(room.code), ROOM_TTL_SECONDS)]);
+    await Promise.all([
+      this.kv.expire(keys.subs(room.code), ROOM_TTL_SECONDS),
+      this.kv.expire(keys.deck(room.code), ROOM_TTL_SECONDS),
+      this.kv.expire(keys.reserve(room.code), ROOM_TTL_SECONDS),
+    ]);
   }
 
   /**
@@ -637,7 +641,8 @@ export class GameEngine {
       humans.map(async (p) => {
         let valid: CandidateVideo[] = [];
         try {
-          valid = await this.validatePlayerVideos(code, p, need);
+          // Validate twice as many as needed: the extras replace videos whose embed fails mid-game.
+          valid = await this.validatePlayerVideos(code, p, need * 2);
         } finally {
           validByPlayer.set(p.id, valid);
           await this.mutate(code, (r) => {
@@ -661,7 +666,7 @@ export class GameEngine {
     for (const b of room.players.filter((p) => p.isBot)) validByPlayer.set(b.id, await this.demoVideos(need, used));
 
     const owners = new Map<string, DeckOwner>(room.players.map((p) => [p.id, { id: p.id, handle: p.tiktokHandle ?? p.name, avatar: p.avatarUrl }]));
-    const deck = buildDeck(validByPlayer, need, owners);
+    const { deck, reserve } = buildDeck(validByPlayer, need, owners);
 
     await this.mutate(code, async (r, ctx) => {
       if (r.gameSeq !== seq || r.phase !== 'COLLECTING') return;
@@ -677,6 +682,7 @@ export class GameEngine {
         return;
       }
       await this.kv.set(keys.deck(code), JSON.stringify(deck), ROOM_TTL_SECONDS);
+      await this.kv.set(keys.reserve(code), JSON.stringify(reserve), ROOM_TTL_SECONDS);
       for (const p of r.players) {
         p.score = 0;
         p.stats = emptyStats();
@@ -689,6 +695,11 @@ export class GameEngine {
   // -------------------------------------------------------------------------
   // Rounds
   // -------------------------------------------------------------------------
+
+  private async readReserve(code: string): Promise<DeckCard[]> {
+    const raw = await this.kv.get(keys.reserve(code));
+    return raw ? (JSON.parse(raw) as DeckCard[]) : [];
+  }
 
   private async readDeck(code: string): Promise<DeckCard[]> {
     const raw = await this.kv.get(keys.deck(code));
@@ -867,8 +878,9 @@ export class GameEngine {
   }
 
   /**
-   * Host skips an unplayable video (deleted/private — common for old likes). The round
-   * is dropped without scoring and the next card starts right away.
+   * Host skips an unplayable video (deleted/private — common for old likes). The card is
+   * swapped for a reserve video (same owner if possible) and the round restarts; only
+   * when the reserve is empty is the round dropped and the next card started.
    */
   async skipRound(code: string, playerId: string, roundIndex: number) {
     await this.mutate(code, async (room, ctx) => {
@@ -877,9 +889,18 @@ export class GameEngine {
       if (room.phase !== 'ROUND_ACTIVE' || !round || round.index !== roundIndex) return;
       this.clearRoundTimers(code);
       ctx.after(() => this.kv.del(keys.votes(code, roundIndex)));
-      ctx.after(() => this.io.to(code).emit('player:notice', { type: 'INFO', message: 'Video nicht verfügbar – übersprungen ⏭️' }));
       room.lastDeltas = {};
       const deck = await this.readDeck(code);
+      const reserve = await this.readReserve(code);
+      if (reserve.length > 0) {
+        const sameOwner = reserve.findIndex((c) => c.ownerPlayerId === deck[roundIndex]?.ownerPlayerId);
+        const [replacement] = reserve.splice(Math.max(0, sameOwner), 1);
+        deck[roundIndex] = { ...replacement, cardId: newCardId() };
+        await this.kv.set(keys.deck(code), JSON.stringify(deck), ROOM_TTL_SECONDS);
+        await this.kv.set(keys.reserve(code), JSON.stringify(reserve), ROOM_TTL_SECONDS);
+        return this.beginRound(room, deck, roundIndex, ctx);
+      }
+      ctx.after(() => this.io.to(code).emit('player:notice', { type: 'INFO', message: 'Video nicht verfügbar – übersprungen ⏭️' }));
       if (roundIndex + 1 >= deck.length) return this.finish(room, ctx);
       this.beginRound(room, deck, roundIndex + 1, ctx);
     });
@@ -928,7 +949,7 @@ export class GameEngine {
       this.io.to(code).emit('leaderboard:update', { roundIndex: room.round!.index, totalRounds: room.round!.total, entries, isFinal: true });
       this.io.to(code).emit('game:over', { podium: entries.slice(0, 3), entries, awards });
       // Zero persistence: the deck (all video URLs) goes away and TikTok tokens are revoked.
-      await this.kv.del(keys.deck(code));
+      await this.kv.del(keys.deck(code), keys.reserve(code));
       for (const sid of sessionIds) await this.revokeSession(sid, true);
     });
   }
@@ -983,6 +1004,7 @@ export class GameEngine {
         keys.room(code),
         keys.subs(code),
         keys.deck(code),
+        keys.reserve(code),
         ...Array.from({ length: total }, (_, i) => keys.votes(code, i)),
       );
       for (const p of room.players) {
