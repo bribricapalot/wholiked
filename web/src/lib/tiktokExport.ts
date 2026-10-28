@@ -34,7 +34,8 @@ function categorize(path: string): ExportCategory | null {
 
 const parseDate = (v: unknown) => {
   if (typeof v !== 'string' && typeof v !== 'number') return null;
-  const t = new Date(typeof v === 'string' ? v.replace(' ', 'T') : v).getTime();
+  // TXT exports write "2026-10-27 18:11:45 UTC", which Date can't parse as-is.
+  const t = new Date(typeof v === 'string' ? v.trim().replace(' ', 'T').replace(/\s*UTC$/i, 'Z') : v).getTime();
   return Number.isFinite(t) ? t : null;
 };
 
