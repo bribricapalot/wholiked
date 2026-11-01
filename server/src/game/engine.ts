@@ -760,7 +760,10 @@ export class GameEngine {
       // Bots are right ~40% of the time.
       const pick =
         ownerOptions.length && Math.random() < 0.4 ? ownerOptions[crypto.randomInt(ownerOptions.length)] : options[crypto.randomInt(options.length)];
-      const delay = 2_000 + Math.random() * (room.settings.roundSeconds * 1000 * 0.7);
+      // Give the host's client time to find out a TikTok embed is broken (and swap it) before
+      // bots can end the round by voting.
+      const min = card.kind === 'tiktok' ? 8_000 : 2_000;
+      const delay = min + Math.random() * Math.max(0, room.settings.roundSeconds * 1000 * 0.85 - min);
       t.bots.push(setTimeout(() => void this.submitVote(room.code, bot.id, round.index, pick).catch(() => {}), delay));
     }
   }
